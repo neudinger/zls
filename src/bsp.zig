@@ -84,25 +84,18 @@ pub fn loadBuildConfiguration(
         .path = build_root_path,
     };
 
-    const base_arguments: []const []const u8 = &.{
-        options.zig_exe_path,
-        "build",
-        "--listen=-",
-    };
-    // Keep formatted -D arguments alive through subprocess execution and diagnostics.
-    // One arena releases both the argument array and strings on every return path.
     var argument_arena: std.heap.ArenaAllocator = .init(gpa);
     defer argument_arena.deinit();
-    const argument_allocator = argument_arena.allocator();
-    const argv = try argument_allocator.alloc(
-        []const u8,
-        base_arguments.len + options.build_options.len,
-    );
-    @memcpy(argv[0..base_arguments.len], base_arguments);
-    // Reuse the existing formatter for both -Dname=value and valueless -Dname.
-    for (options.build_options, argv[base_arguments.len..]) |build_option, *argument| {
-        argument.* = try build_option.formatParam(argument_allocator);
-    }
+
+    const argv: []const []const u8 = args: {
+        const allocator = argument_arena.allocator();
+        const base_arguments: []const []const u8 = &.{ options.zig_exe_path, "build", "--listen=-" };
+        const arguments = try allocator.alloc([]const u8, base_arguments.len + options.build_options.len);
+        arguments[0..base_arguments.len].* = base_arguments;
+        for (options.build_options, arguments[base_arguments.len..]) |option, *argument|
+            argument.* = try option.formatParam(allocator);
+        break :args arguments;
+    };
 
     var child_environ_map = try environ_map.clone(gpa);
     defer child_environ_map.deinit();
